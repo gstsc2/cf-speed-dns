@@ -7,12 +7,7 @@ import json
 # API 密钥
 CF_API_TOKEN    =   os.environ["CF_API_TOKEN"]
 CF_ZONE_ID      =   os.environ["CF_ZONE_ID"]
-# 支持多个域名：CF_DNS_NAME="a.example.com,b.example.net,c.example.org"
-CF_DNS_NAMES = [x.strip() for x in os.environ.get("CF_DNS_NAME","").split(",") if x.strip()]
-if not CF_DNS_NAMES:
-    print("❌ 没有检测到 CF_DNS_NAME，请设置（可逗号分隔多个域名）")
-    exit(1)
-
+CF_DNS_NAME     =   os.environ["CF_DNS_NAME"]
 
 # pushplus_token
 PUSHPLUS_TOKEN  =   os.environ["PUSHPLUS_TOKEN"]
@@ -89,39 +84,18 @@ def push_plus(content):
 
 # 主函数
 def main():
-    # 获取最新优选IP（逗号分隔）
+    # 获取最新优选IP
     ip_addresses_str = get_cf_speed_test_ip()
-    if not ip_addresses_str:
-        print("❌ 未获取到优选 IP 列表")
-        return
-    ip_addresses = [x.strip() for x in ip_addresses_str.split(",") if x.strip()]
-    if not ip_addresses:
-        print("❌ 解析优选 IP 列表为空")
-        return
+    ip_addresses = ip_addresses_str.split(',')
+    dns_records = get_dns_records(CF_DNS_NAME)
+    push_plus_content = []
+    # 遍历 IP 地址列表
+    for index, ip_address in enumerate(ip_addresses):
+        # 执行 DNS 变更
+        dns = update_dns_record(dns_records[index], CF_DNS_NAME, ip_address)
+        push_plus_content.append(dns)
 
-    all_push_lines = []
-
-    for dns_name in CF_DNS_NAMES:
-        print(f"🔄 正在更新域名：{dns_name}")
-        dns_records = get_dns_records(dns_name)
-        if not dns_records:
-            print(f"⚠️ 未在 Zone({CF_ZONE_ID}) 中找到 {dns_name} 的 A 记录")
-            all_push_lines.append(f"{dns_name}: 未找到记录，跳过")
-            continue
-
-        # 只更新“记录数”和“IP数”两者的最小个数，避免越界
-        updated = 0
-        for record_id, cf_ip in zip(dns_records, ip_addresses):
-            msg = update_dns_record(record_id, dns_name, cf_ip)
-            print(msg)
-            all_push_lines.append(f"{dns_name} -> {cf_ip}: {msg}")
-            updated += 1
-
-        # 可选：如果希望每个域名都把所有 IP 用完，但记录不够，你也可以在这里补充创建记录的逻辑
-        print(f"✅ {dns_name} 已更新 {updated} 条 A 记录\n")
-
-    # 如你不需要推送，可直接注释掉下面一行
-    push_plus("\n".join(all_push_lines))
+    push_plus('\n'.join(push_plus_content))
 
 if __name__ == '__main__':
     main()
